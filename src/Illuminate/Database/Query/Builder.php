@@ -535,6 +535,31 @@ class Builder implements BuilderContract
     }
 
     /**
+     * Add a subquery join clause to the query.
+     *
+     * @param  \Closure|\Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder|string  $query
+     * @param  string  $as
+     * @param  \Closure|string  $first
+     * @param  string|null  $operator
+     * @param  string|null  $second
+     * @param  string  $type
+     * @param  bool  $where
+     * @return $this
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function joinLateral($query, $as, $first, $operator = null, $second = null, $type = 'inner', $where = false)
+    {
+        [$query, $bindings] = $this->createSub($query);
+
+        $expression = 'lateral ('.$query.') as '.$this->grammar->wrapTable($as);
+
+        $this->addBinding($bindings, 'join');
+
+        return $this->join(new Expression($expression), $first, $operator, $second, $type, $where);
+    }
+
+    /**
      * Add a left join to the query.
      *
      * @param  string  $table
@@ -575,6 +600,21 @@ class Builder implements BuilderContract
     public function leftJoinSub($query, $as, $first, $operator = null, $second = null)
     {
         return $this->joinSub($query, $as, $first, $operator, $second, 'left');
+    }
+
+    /**
+     * Add a left join lateral to the query.
+     *
+     * @param  \Closure|\Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder|string  $query
+     * @param  string  $as
+     * @param  \Closure|string  $first
+     * @param  string|null  $operator
+     * @param  string|null  $second
+     * @return $this
+     */
+    public function leftJoinLateral($query, $as, $first, $operator = null, $second = null)
+    {
+        return $this->joinLateral($query, $as, $first, $operator, $second, 'left');
     }
 
     /**
@@ -621,6 +661,21 @@ class Builder implements BuilderContract
     }
 
     /**
+     * Add a right join lateral to the query.
+     *
+     * @param  \Closure|\Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder|string  $query
+     * @param  string  $as
+     * @param  \Closure|string  $first
+     * @param  string|null  $operator
+     * @param  string|null  $second
+     * @return $this
+     */
+    public function rightJoinLateral($query, $as, $first, $operator = null, $second = null)
+    {
+        return $this->joinLateral($query, $as, $first, $operator, $second, 'right');
+    }
+
+    /**
      * Add a "cross join" clause to the query.
      *
      * @param  string  $table
@@ -652,6 +707,28 @@ class Builder implements BuilderContract
         [$query, $bindings] = $this->createSub($query);
 
         $expression = '('.$query.') as '.$this->grammar->wrapTable($as);
+
+        $this->addBinding($bindings, 'join');
+
+        $this->joins[] = $this->newJoinClause($this, 'cross', new Expression($expression));
+
+        return $this;
+    }
+
+    /**
+     * Add a subquery cross join lateral to the query.
+     *
+     * @param  \Closure|\Illuminate\Database\Query\Builder|string  $query
+     * @param  string  $as
+     * @return $this
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function crossJoinLateral($query, $as)
+    {
+        [$query, $bindings] = $this->createSub($query);
+
+        $expression = 'lateral ('.$query.') as '.$this->grammar->wrapTable($as);
 
         $this->addBinding($bindings, 'join');
 

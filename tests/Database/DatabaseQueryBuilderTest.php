@@ -1809,6 +1809,13 @@ class DatabaseQueryBuilderTest extends TestCase
         $this->assertSame('select (sale / overall.sales) * 100 AS percent_of_total from "sales" cross join (select SUM(sale) AS sales from "sales") as "overall"', $builder->toSql());
     }
 
+    public function testCrossJoinLaterals()
+    {
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->crossJoinLateral($this->getBuilder()->select('*')->from('contacts')->orderBy('created_at', 'desc')->limit(1), 'lateral');
+        $this->assertSame('select * from "users" cross join lateral (select * from "contacts" order by "created_at" desc limit 1) as "lateral"', $builder->toSql());
+    }
+
     public function testComplexJoin()
     {
         $builder = $this->getBuilder();
@@ -2102,12 +2109,68 @@ class DatabaseQueryBuilderTest extends TestCase
     public function testRightJoinSub()
     {
         $builder = $this->getBuilder();
-        $builder->from('users')->rightJoinSub($this->getBuilder()->from('contacts'), 'sub', 'users.id', '=', 'sub.id');
-        $this->assertSame('select * from "users" right join (select * from "contacts") as "sub" on "users"."id" = "sub"."id"', $builder->toSql());
+        $builder->from('users')->rightJoinSub($this->getBuilder()->from('contacts'), 'lat', 'users.id', '=', 'lat.id');
+        $this->assertSame('select * from "users" right join (select * from "contacts") as "lat" on "users"."id" = "lat"."id"', $builder->toSql());
 
         $this->expectException(InvalidArgumentException::class);
         $builder = $this->getBuilder();
-        $builder->from('users')->rightJoinSub(['foo'], 'sub', 'users.id', '=', 'sub.id');
+        $builder->from('users')->rightJoinSub(['foo'], 'lat', 'users.id', '=', 'lat.id');
+    }
+
+    public function testJoinLateral()
+    {
+        $builder = $this->getBuilder();
+        $builder->from('users')->joinLateral('select * from "contacts"', 'lat', 'users.id', '=', 'lat.id');
+        $this->assertSame('select * from "users" inner join lateral (select * from "contacts") as "lat" on "users"."id" = "lat"."id"', $builder->toSql());
+
+        $builder = $this->getBuilder();
+        $builder->from('users')->joinLateral(function ($q) {
+            $q->from('contacts');
+        }, 'lat', 'users.id', '=', 'lat.id');
+        $this->assertSame('select * from "users" inner join lateral (select * from "contacts") as "lat" on "users"."id" = "lat"."id"', $builder->toSql());
+
+        $builder = $this->getBuilder();
+        $eloquentBuilder = new EloquentBuilder($this->getBuilder()->from('contacts'));
+        $builder->from('users')->joinLateral($eloquentBuilder, 'lat', 'users.id', '=', 'lat.id');
+        $this->assertSame('select * from "users" inner join lateral (select * from "contacts") as "lat" on "users"."id" = "lat"."id"', $builder->toSql());
+
+        $builder = $this->getBuilder();
+        $lat1 = $this->getBuilder()->from('contacts')->where('name', 'foo');
+        $lat2 = $this->getBuilder()->from('contacts')->where('name', 'bar');
+        $builder->from('users')
+            ->joinLateral($lat1, 'lat1', 'users.id', '=', 1, 'inner', true)
+            ->joinLateral($lat2, 'lat2', 'users.id', '=', 'lat2.user_id');
+        $expected = 'select * from "users" ';
+        $expected .= 'inner join lateral (select * from "contacts" where "name" = ?) as "lat1" on "users"."id" = ? ';
+        $expected .= 'inner join lateral (select * from "contacts" where "name" = ?) as "lat2" on "users"."id" = "lat2"."user_id"';
+        $this->assertEquals($expected, $builder->toSql());
+        $this->assertEquals(['foo', 1, 'bar'], $builder->getRawBindings()['join']);
+
+        $this->expectException(InvalidArgumentException::class);
+        $builder = $this->getBuilder();
+        $builder->from('users')->joinLateral(['foo'], 'lat', 'users.id', '=', 'lat.id');
+    }
+
+    public function testLeftJoinLateral()
+    {
+        $builder = $this->getBuilder();
+        $builder->from('users')->leftJoinLateral($this->getBuilder()->from('contacts'), 'lat', 'users.id', '=', 'lat.id');
+        $this->assertSame('select * from "users" left join lateral (select * from "contacts") as "lat" on "users"."id" = "lat"."id"', $builder->toSql());
+
+        $this->expectException(InvalidArgumentException::class);
+        $builder = $this->getBuilder();
+        $builder->from('users')->leftJoinLateral(['foo'], 'lat', 'users.id', '=', 'lat.id');
+    }
+
+    public function testRightJoinLateral()
+    {
+        $builder = $this->getBuilder();
+        $builder->from('users')->rightJoinLateral($this->getBuilder()->from('contacts'), 'lat', 'users.id', '=', 'lat.id');
+        $this->assertSame('select * from "users" right join lateral (select * from "contacts") as "lat" on "users"."id" = "lat"."id"', $builder->toSql());
+
+        $this->expectException(InvalidArgumentException::class);
+        $builder = $this->getBuilder();
+        $builder->from('users')->rightJoinLateral(['foo'], 'lat', 'users.id', '=', 'lat.id');
     }
 
     public function testRawExpressionsInSelect()
